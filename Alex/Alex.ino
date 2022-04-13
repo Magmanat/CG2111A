@@ -137,6 +137,8 @@ void delaymicros(int delaytime){
   }
 }
 
+//to obtain distance between left ultrasonic sensor
+//and nearest obstacles at regular time intervals
 void updateleftus(){
   PORTD &= ~(1 << 7);
   long long timenow = micros();
@@ -150,6 +152,8 @@ void updateleftus(){
   leftusdistance = (duration) * 0.034 / 2.0;
 }
 
+//to obtain distance between right ultrasonic sensor
+//and nearest obstacles at regular time intervals
 void updaterightus(){
   PORTB &= ~(1 << 3);
   delaymicros(2);
