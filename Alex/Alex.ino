@@ -12,7 +12,7 @@
 
 volatile TDirection dir = STOP;
 
-#define F_CPU 16000000 //cpu clock speed
+#define F_CPU 16000000 //cpu internal clock speed
 
 #define READ_BUFFER_SIZE 140
 #define WRITE_BUFFER_SIZE 140
@@ -21,14 +21,13 @@ volatile TDirection dir = STOP;
 
 #define COUNTS_PER_REV      180.0
 
-// Wheel circumference in cm.
+// Wheel circumference, WHEEL_CIRC in cm.
 // We will use this to calculate forward/backward distance traveled 
 // by taking revs * WHEEL_CIRC
 
 #define WHEEL_CIRC          20.4
 
-// Motor control pins. You need to adjust these till
-// Alex moves in the correct direction
+// Motor control pins. 
 #define LF                  5 // Left forward pin
 #define LR                  6 // Left reverse pin
 #define RF                  10  // Right forward pin
@@ -390,12 +389,9 @@ ISR(INT1_vect)
  * Setup and start codes for serial communications
  * 
  */
-// Set up the serial connection. For now we are using 
-// Arduino Wiring, you will replace this later
-// with bare-metal code.
+// Setting up the serial connection in baremetal
 void setupSerial()
 {
-  // To replace later with bare-metal.
  float baudRate = 9600;
  unsigned int b = (unsigned int) ((float)F_CPU / (16.0 * baudRate)) - 1;
  
@@ -406,18 +402,13 @@ void setupSerial()
   // Serial.begin(9600);
 }
 
-// Start the serial connection. For now we are using
-// Arduino wiring and this function is empty. We will
-// replace this later with bare-metal code.
-
+// Start the serial connection in baremetal
 void startSerial()
 {
-  // Empty for now. To be replaced with bare-metal code
-  // later on.
  UCSR0B = 0b10011000;
 }
 
-
+//check on buffer's current status
 TBufferStatus pushToBuffer(TCircBuffer *circBuffer, char data) {
   if (circBuffer->len >= circBuffer->max_size) return BUFFER_FULL; // ! If buffer is full fail silently and lose data
   
@@ -428,6 +419,7 @@ TBufferStatus pushToBuffer(TCircBuffer *circBuffer, char data) {
   return BUFFER_OK;
 }
 
+//once data is read, push read data off buffer so that next data can be read in
 TBufferStatus popFromBuffer(TCircBuffer *circBuffer, char *data) {
     if (circBuffer->len <= 0) return BUFFER_EMPTY;
 
@@ -445,10 +437,8 @@ ISR(USART_RX_vect) {
 }
 
 
-// Read the serial port. Returns the read character in
+// Read the serial port in baremetal. Returns the read character in
 // ch if available. Also returns TRUE if ch is valid. 
-// This will be replaced later with bare-metal code.
-
 int readSerial(char *buffer)
 {
   int count = 0;
@@ -488,10 +478,7 @@ ISR(USART_UDRE_vect) {
 }
 
 
-// Write to the serial port. Replaced later with
-// bare-metal code
-
-
+// Writes to the serial port implemented in baremetal
 void writeSerial(const char *buffer, int len) {
   // Serial.write(buffer,len);
   
@@ -519,9 +506,7 @@ void writeSerial(const char *buffer, int len) {
  * 
  */
 
-// Set up Alex's motors. Right now this is empty, but
-// later you will replace it with code to set up the PWMs
-// to drive the motors.
+// Setting up Alex's motors in baremetal
 void setupMotors()
 {
   /* Our motor set up is:  
@@ -542,9 +527,7 @@ void setupMotors()
   OCR1B = 0; 
 }
 
-// Start the PWM for Alex's motors.
-// We will implement this later. For now it is
-// blank.
+// Initialise the PWM for Alex's motors in baremetal.
 void startMotors()
 {
   TCCR0B = 0b00000011;
@@ -577,9 +560,6 @@ void forward(float dist, float speed)
     deltaDist=9999999;
   }
   newDist=forwardDist + deltaDist;
-  // For now we will ignore dist and move
-  // forward indefinitely. We will fix this
-  // in Week 9.
   int val = pwmVal(speed);
   // LF = Left forward pin, LR = Left reverse pin
   // RF = Right forward pin, RR = Right reverse pin
@@ -606,9 +586,6 @@ void reverse(float dist, float speed)
     deltaDist=9999999;
   }
   newDist=reverseDist + deltaDist;
-  // For now we will ignore dist and 
-  // reverse indefinitely. We will fix this
-  // in Week 9. 
   int val = pwmVal(speed);
   // LF = Left forward pin, LR = Left reverse pin
   // RF = Right forward pin, RR = Right reverse pin
@@ -641,8 +618,6 @@ void left(float ang, float speed)
   else
     deltaTicks=computeDeltaTicks(ang);
   targetTicks = leftReverseTicksTurns + deltaTicks;
-  // For now we will ignore ang. We will fix this in Week 9.
-  // We will also replace this code with bare-metal later.
   // To turn left we reverse the left wheel and move
   // the right wheel forward.
   int val = pwmVal(speed);
@@ -650,7 +625,7 @@ void left(float ang, float speed)
   //speed = (int)((speed/100.0) * 255.0);
   
   OCR1A = 0;
-  OCR0A = (int)( 0.95 * val);
+  OCR0A = (int)(0.95 * val);
   OCR0B = 0;
   OCR1B = val;
 }
@@ -667,8 +642,6 @@ void right(float ang, float speed)
   else
     deltaTicks=computeDeltaTicks(ang);
   targetTicks = rightReverseTicksTurns + deltaTicks;
-  // For now we will ignore ang. We will fix this in Week 9.
-  // We will also replace this code with bare-metal later.
   // To turn right we reverse the right wheel and move
   // the left wheel forward.
   int val = pwmVal(speed);
@@ -680,7 +653,7 @@ void right(float ang, float speed)
   OCR1B = 0;
 }
 
-// Stop Alex. To replace with bare-metal code later.
+// Stopping Alex in baremetal.
 void stop()
 {
   dir = STOP;
@@ -727,8 +700,8 @@ void clearOneCounter()
 {
   clearCounters();
 }
-// Intialize Vincet's internal states
 
+// Intialize Alex's internal states
 void initializeState()
 {
   clearCounters();
@@ -820,7 +793,7 @@ void waitForHello()
 }
 
 void setup() {
-  // put your setup code here, to run once:
+  // put setup code here, to run once:
   cli();
   setupSerial();
   startSerial();
@@ -859,8 +832,6 @@ void handlePacket(TPacket *packet)
 
 void loop() {
 
-// Uncomment the code below for Step 2 of Activity 3 in Week 8 Studio 2
-// Uncomment the code below for Week 9 Studio 2
   if (millis() - ustime >= USDELAY){
     updateleftus();
     updaterightus();
