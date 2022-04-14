@@ -1,5 +1,4 @@
 #include <serialize.h>
-
 #include "packet.h"
 #include "constants.h"
 #include <math.h>
@@ -9,54 +8,37 @@
 /*
  * Alex's configuration constants
  */
-
 volatile TDirection dir = STOP;
+#define F_CPU 16000000 //CPU internal clock speed
+#define READ_BUFFER_SIZE 140  // Read Buffer Size
+#define WRITE_BUFFER_SIZE 140  // Write Buffer Size
 
-#define F_CPU 16000000 //cpu internal clock speed
-
-#define READ_BUFFER_SIZE 140
-#define WRITE_BUFFER_SIZE 140
-// Number of ticks per revolution from the 
-// wheel encoder.
-
-#define COUNTS_PER_REV      180.0
-
-// Wheel circumference, WHEEL_CIRC in cm.
-// We will use this to calculate forward/backward distance traveled 
-// by taking revs * WHEEL_CIRC
-
-#define WHEEL_CIRC          20.4
+// For calculation of forward/backward distance traveled by taking revs * WHEEL_CIRC
+#define COUNTS_PER_REV 180.0  // Number of ticks per revolution from the wheel encoder.
+#define WHEEL_CIRC 20.4  // Wheel circumference, WHEEL_CIRC in cm.
+#define PI  3.141592654  //PI, for calculating turn circumference
+#define ALEX_BREADTH 9.8  // Alex's breadth in cm
+float alexCirc = 0.0;  // Alex's turning circumference, calculated once
 
 // Motor control pins. 
-#define LF                  5 // Left forward pin
-#define LR                  6 // Left reverse pin
-#define RF                  10  // Right forward pin
-#define RR                  9  // Right reverse pin
+#define LF  5 // Left forward pin
+#define LR  6 // Left reverse pin
+#define RF  10  // Right forward pin
+#define RR  9  // Right reverse pin
 
-//PI, for calculating turn circumference
-#define PI                      3.141592654
+#define UDRIEMASK 0b00100000  // UDRIE mask. Use this to enable/disable the UDRE interrupt
 
-// Alex's length and breadth in cm
-#define ALEX_BREADTH   9.8
-
-// Alex's turning circumference, calculated once
-float alexCirc = 0.0;
-
-// UDRIE mask. Use this to enable/disable the UDRE interrupt
-#define UDRIEMASK           0b00100000
-
-// set params for ultrasound
-#define USDELAY      50
-#define USTHRESHOLD  10
+// Set params for ultrasound
+#define USDELAY      50  // Time taken for delay
+#define USTHRESHOLD  10  // Distance in cm to trigger LEDs to light up
 unsigned long ustime = millis();
 
 
 /*
- *    Alex's State Variables
+ * Alex's State Variables
  */
 
-
-// Serial buffers
+// Serial Circular buffers
 typedef struct
 {
 	int len;
@@ -71,8 +53,7 @@ TCircBuffer readBuffer;
 
 unsigned long prev = millis(); // Watch time for serial communication delay
 
-// Store the ticks from Alex's left and
-// right encoders.
+// Store the number of ticks in different directions from Alex's left and right encoders.
 volatile unsigned long leftForwardTicks; 
 volatile unsigned long rightForwardTicks;
 volatile unsigned long leftReverseTicks; 
@@ -83,97 +64,96 @@ volatile unsigned long rightForwardTicksTurns;
 volatile unsigned long leftReverseTicksTurns; 
 volatile unsigned long rightReverseTicksTurns;
 
-// Store the revolutions on Alex's left
-// and right wheels
+// Store the number of revolutions on Alex's left and right wheels
 volatile unsigned long leftForwardRevs;
 volatile unsigned long rightForwardRevs;
 volatile unsigned long leftReverseRevs;
 volatile unsigned long rightReverseRevs;
 
-// Forward and backward distance traveled
+// Store the distance travelled in the forward and backward direction
 volatile unsigned long forwardDist;
 volatile unsigned long reverseDist;
 
-//Variable to keep track of whether we have moved a commanded distance
+// Variables to keep track of whether we have moved a commanded distance
 unsigned long deltaDist;
 unsigned long newDist;
 
-//variables to keep track of our turning angle
+// Variables to keep track of our turning angle
 unsigned long deltaTicks;
 unsigned long targetTicks;
 
+// Store the distance of the nearest obstacle from Alex using distance measured by the ultrasonic sensor
 unsigned long leftusdistance;
 unsigned long rightusdistance;
 
 
 /*
- * 
+ * @PARAM [packet] To store the deserialised data
  * Alex Communication Routines.
- * 
+ * Reads in data from the serial port and deserializes it. Returns deserialized data in "packet".
  */
- 
 TResult readPacket(TPacket *packet)
 {
-    // Reads in data from the serial port and
-    // deserializes it.Returns deserialized
-    // data in "packet".
-    
     char buffer[PACKET_SIZE];
     int len;
     len = readSerial(buffer);
 
-    if(len == 0){
+    if(len == 0)
       return PACKET_INCOMPLETE;
-    }
     else
       return deserialize(buffer, len, packet);
-    
 }
 
+/*
+ * @PARAM [delaytime] Time duration to delay in microseconds
+ * For time delay of a specific duration
+ */
 void delaymicros(int delaytime){
   long long timenow = micros();
   while (micros() - timenow < delaytime){   
   }
 }
 
-//to obtain distance between left ultrasonic sensor
-//and nearest obstacles at regular time intervals
+
+/*
+ * To obtain distance between left ultrasonic sensor 
+ * and nearest obstacles at regular time intervals
+ */
 void updateleftus(){
   PORTD &= ~(1 << 7);
   long long timenow = micros();
   delaymicros(2);
-  //delayMicroseconds(2);
   PORTD |= (1 << 7);
   delaymicros(10);
-  //delayMicroseconds(10);
   PORTD &= ~(1 << 7);
   long duration = pulseIn(8, HIGH);
   leftusdistance = (duration) * 0.034 / 2.0;
 }
 
-//to obtain distance between right ultrasonic sensor
-//and nearest obstacles at regular time intervals
+/*
+ * To obtain distance between right ultrasonic sensor 
+ * and nearest obstacles at regular time intervals
+ */
 void updaterightus(){
   PORTB &= ~(1 << 3);
   delaymicros(2);
-  //delayMicroseconds(2);
   PORTB |= (1 << 3);
   delaymicros(10);
-  //delayMicroseconds(10);
   PORTB &= ~(1 << 3);
   long duration = pulseIn(12, HIGH);
   rightusdistance = (duration) * 0.034 / 2.0;
 }
 
+
+/*
+ * To send a packet containing key information regarding Alex's motors' ticks,
+ * forward/reverse distance and nearest obstacle distance.
+ * Params array is used to store this information,
+ * and se the packetType and command files accordingly.
+ * sendResponse function is used to send the packet out.
+ */
 void sendStatus()
 {
-  // Implement code to send back a packet containing key
-  // information like leftTicks, rightTicks, leftRevs, rightRevs
-  // forwardDist and reverseDist
-  // Use the params array to store this information, and set the
-  // packetType and command files accordingly, then use sendResponse
-  // to send out the packet. See sendMessage on how to use sendResponse.
-  //
   TPacket statusPacket;
   statusPacket.packetType=PACKET_TYPE_RESPONSE;
   statusPacket.command = RESP_STATUS;
@@ -194,17 +174,21 @@ void sendStatus()
 
 }
 
+/*
+ * @PARAM [*message] Stores an array of char that contains the message to be sent across
+ * Sends text messages back to the Pi. Useful for debugging.
+ */
 void sendMessage(const char *message)
-{
-  // Sends text messages back to the Pi. Useful
-  // for debugging.
-  
+{ 
   TPacket messagePacket;
   messagePacket.packetType=PACKET_TYPE_MESSAGE;
   strncpy(messagePacket.data, message, MAX_STR_LEN);
   sendResponse(&messagePacket);
 }
 
+/*
+ *
+ */
 void dbprint(char *format, ...) {
   va_list args;
   char buffer[128];
@@ -213,25 +197,26 @@ void dbprint(char *format, ...) {
   sendMessage(buffer);
 }
 
+/*
+ * Tell the Pi that it sent us a bad packet with a bad magic number.
+ * Clears both the read and write buffer.
+ */
 void sendBadPacket()
 {
-  // Tell the Pi that it sent us a packet with a bad
-  // magic number.
-  
   TPacket badPacket;
   badPacket.packetType = PACKET_TYPE_ERROR;
   badPacket.command = RESP_BAD_PACKET;
   clearReadBuffer();
   clearWriteBuffer();
   sendResponse(&badPacket);
-  
 }
 
+/*
+ * Tell the Pi that it sent us a packet with a bad checksum.
+ * Clears both the read and write buffer.
+ */
 void sendBadChecksum()
 {
-  // Tell the Pi that it sent us a packet with a bad
-  // checksum.
-  
   TPacket badChecksum;
   badChecksum.packetType = PACKET_TYPE_ERROR;
   badChecksum.command = RESP_BAD_CHECKSUM;
@@ -240,20 +225,24 @@ void sendBadChecksum()
   sendResponse(&badChecksum);  
 }
 
+/*
+ * Tell the Pi that we don't understand its command sent to us.
+ * Clears both the read and write buffer.
+ */
 void sendBadCommand()
 {
-  // Tell the Pi that we don't understand its
-  // command sent to us.
-  
   TPacket badCommand;
   badCommand.packetType=PACKET_TYPE_ERROR;
   badCommand.command=RESP_BAD_COMMAND;
   clearReadBuffer();
   clearWriteBuffer();
   sendResponse(&badCommand);
-
 }
 
+/*
+ * Tell the Pi that the response sent to it cannot be understood.
+ * Clears both the read and write buffer.
+ */
 void sendBadResponse()
 {
   TPacket badResponse;
@@ -264,6 +253,9 @@ void sendBadResponse()
   sendResponse(&badResponse);
 }
 
+/*
+ * Tell the Pi that the command sent to it is understood.
+ */
 void sendOK()
 {
   TPacket okPacket;
@@ -272,10 +264,12 @@ void sendOK()
   sendResponse(&okPacket);  
 }
 
+/*
+ * @PARAMS [*packet] Contains information of the packet data to be sent over. 
+ * Takes a packet, serializes it then sends it out over the serial port.
+ */ 
 void sendResponse(TPacket *packet)
 {
-  // Takes a packet, serializes it then sends it out
-  // over the serial port.
   char buffer[PACKET_SIZE];
   int len;
 
@@ -285,20 +279,20 @@ void sendResponse(TPacket *packet)
 
 
 /*
- * Setup and start codes for external interrupts and 
- * pullup resistors.
- * 
+ * Setup and start codes for external interrupts and pullup resistors on pins 2 and 3 (PD2 and PD3).
+ * Bits 2 and 3 in DDRD to 0 to make them inputs.
  */
-// Enable pull up resistors on pins 2 and 3
 void enablePullups()
 {
-  // Use bare-metal to enable the pull-up resistors on pins
-  // 2 and 3. These are pins PD2 and PD3 respectively.
-  // We set bits 2 and 3 in DDRD to 0 to make them inputs. 
   DDRD &= (~(1 << DDD3) & ~(1 << DDD2));
   PORTD |= (1 << PORTD3) | (1 << PORTD2);
 }
 
+/*
+ * Setup code for ultrasonic sensor.
+ * Pins 7 and 11 are set as outputs (PD7 and PB3).
+ * Pins 8 and 12 are set as inputs and as pulldown (PB0 and PB4).
+ */
 void setupUltrasound()
 {
   //make pin 7 and pin 11 output, then pin 8 and pin 12 input using bare-metal and set them as pulldown
@@ -308,14 +302,20 @@ void setupUltrasound()
   PORTB &= (~(1 << PORTB4) & ~(1 << PORTB0));
 }
 
+/*
+ * Setup code for the LEDs
+ * A0-A3 are set as output and set to digital 0 first (turned off).
+ */
 void setupLED()
 {
-  //make A0-A3 output using bare-metal and set them as digital 0 first
   DDRC |= (1 << DDC0) | (1 << DDC1) | (1 << DDC2) | (1 << DDC3);
   PORTC &= (~(1 << DDC0) & ~(1 << DDC1) & ~(1 << DDC2) & ~(1 << DDC3));
 }
 
-// Functions to be called by INT0 and INT1 ISRs.
+/*
+ * Function to be called by INT0 ISR.
+ * Updates the number of ticks in the left motor according to the direction.
+ */
 void leftISR()
 {
   if (dir == FORWARD) {
@@ -329,14 +329,12 @@ void leftISR()
   } else if (dir == RIGHT) {
     leftForwardTicksTurns++;
   }
-  // leftTicks++;
-  // leftRevs = leftTicks / COUNTS_PER_REV;
-  // Serial.print("LEFT: ");
-  // Serial.println(leftTicks);
-  // Serial.print("LEFT REVS: ");
-  // Serial.println(leftRevs);
 }
 
+/*
+ * Function to be called by INT1 ISR.
+ * Updates the number of ticks in the right motor according to the direction.
+ */
 void rightISR()
 {
   if (dir == FORWARD) {
@@ -348,48 +346,42 @@ void rightISR()
   } else if (dir == LEFT) {
     rightForwardTicksTurns++;
   }
-  // Serial.print("RIGHT: ");
-  // Serial.println(rightTicks);
-  // rightRevs = rightTicks / COUNTS_PER_REV;
-  // Serial.print("RIGHT REVS: ");
-  // Serial.println(rightRevs);
 }
 
-
-
-// Set up the external interrupt pins INT0 and INT1
-// for falling edge triggered. Use bare-metal.
+/*
+ * Set up the external interrupt pins INT0 and INT1 for falling edge triggered
+ * Enable the INT0 and INT1 interrupts.
+ */
 void setupEINT()
 {
-  // Use bare-metal to configure pins 2 and 3 to be
-  // falling edge triggered. Remember to enable
-  // the INT0 and INT1 interrupts.
   cli(); //disable the interrupts
   EICRA |= 0b00001010; //FALLING edge
   EIMSK |= 0b00000011; //Switch on interrupts for INT0 and INT1
   sei(); //enable the interrupts
 }
 
-// Implement the external interrupt ISRs below.
-// INT0 ISR should call leftISR while INT1 ISR
-// should call rightISR.
+/*
+ * External interrupt ISR function.
+ * INT0 ISR should call leftISR.
+ */
 ISR(INT0_vect)
 {
   leftISR();
 }
 
+/*
+ * External interrupt ISR function.
+ * INT1 ISR should call rightISR.
+ */
 ISR(INT1_vect)
 {
   rightISR();
 }
 
-// Implement INT0 and INT1 ISRs above.
 
 /*
- * Setup and start codes for serial communications
- * 
+ * Setup code for serial communications
  */
-// Setting up the serial connection in baremetal
 void setupSerial()
 {
  float baudRate = 9600;
@@ -399,18 +391,23 @@ void setupSerial()
  UBRR0L = b;
  UBRR0H = (b >> 8);
  UCSR0A = 0;
-  // Serial.begin(9600);
 }
 
-// Start the serial connection in baremetal
+/*
+ * Start code for serial communications
+ */
 void startSerial()
 {
  UCSR0B = 0b10011000;
 }
 
-//check on buffer's current status
+/*
+ * @PARAM [*circBuffer] Circular buffer that stores and transfers data
+ * @PARAM [data] A character in the data
+ * Push char data to the circular buffer.
+ */
 TBufferStatus pushToBuffer(TCircBuffer *circBuffer, char data) {
-  if (circBuffer->len >= circBuffer->max_size) return BUFFER_FULL; // ! If buffer is full fail silently and lose data
+  if (circBuffer->len >= circBuffer->max_size) return BUFFER_FULL; // If buffer is full, fail silently and lose data
   
   circBuffer->buffer[circBuffer->back] = data; // Get received data
   circBuffer->len++;
@@ -419,7 +416,11 @@ TBufferStatus pushToBuffer(TCircBuffer *circBuffer, char data) {
   return BUFFER_OK;
 }
 
-//once data is read, push read data off buffer so that next data can be read in
+/*
+ * @PARAM [*circBuffer] Circular buffer that stores and transfers data
+ * @PARAM [data] A character in the data
+ * Once data is read, pop data off the circular buffer so that next data can be read in
+ */
 TBufferStatus popFromBuffer(TCircBuffer *circBuffer, char *data) {
     if (circBuffer->len <= 0) return BUFFER_EMPTY;
 
@@ -430,15 +431,20 @@ TBufferStatus popFromBuffer(TCircBuffer *circBuffer, char *data) {
     return BUFFER_OK;
 }
 
+/*
+ * Interrupt that is called when a data is received using serial communication
+ */
 ISR(USART_RX_vect) {
   char data = UDR0;
 
   pushToBuffer(&readBuffer, data);
 }
 
-
-// Read the serial port in baremetal. Returns the read character in
-// ch if available. Also returns TRUE if ch is valid. 
+/*
+ * @PARAM [*buffer] An array that stores the data
+ * Reads the buffer from the serial port when buffer size exceeds the size of TPacket. 
+ * Returns the read character in ch if available. Also returns TRUE if ch is valid. ??
+ */
 int readSerial(char *buffer)
 {
   int count = 0;
@@ -449,21 +455,23 @@ int readSerial(char *buffer)
 
   TBufferStatus status;
   if (readBuffer.len >= sizeof(TPacket)){
-  do {
-    status = popFromBuffer(&readBuffer, &(buffer[count]));
+    do {
+      status = popFromBuffer(&readBuffer, &(buffer[count]));
 
-    if (status == BUFFER_OK) {
-      count++;
-      prev = millis();
-      while (millis() - prev < 1); //ensure that there is a delay between popping from buffer
-    }
-  } while (status == BUFFER_OK);
+      if (status == BUFFER_OK) {
+        count++;
+        prev = millis();
+        while (millis() - prev < 1); //ensure that there is a delay between popping from buffer
+      }
+    } while (status == BUFFER_OK);
   }
   
   return count;
 }
 
-
+/*
+ * Interrupt that is called when a data is transmitted using serial communication
+ */
 ISR(USART_UDRE_vect) {
   char data;
   TBufferStatus status = popFromBuffer(&writeBuffer, &data);
@@ -478,7 +486,11 @@ ISR(USART_UDRE_vect) {
 }
 
 
-// Writes to the serial port implemented in baremetal
+/*
+ * @PARAM [*buffer] An array that stores the data
+ * @PARAM [len] Total length of buffer
+ * Writes to the serial port implemented in baremetal
+ */
 void writeSerial(const char *buffer, int len) {
   // Serial.write(buffer,len);
   
@@ -502,11 +514,8 @@ void writeSerial(const char *buffer, int len) {
 }
 
 /*
- * Alex's motor drivers.
- * 
+ * Setting up Alex's motors in baremetal
  */
-
-// Setting up Alex's motors in baremetal
 void setupMotors()
 {
   /* Our motor set up is:  
@@ -527,14 +536,19 @@ void setupMotors()
   OCR1B = 0; 
 }
 
-// Initialise the PWM for Alex's motors in baremetal.
+/*
+ * Start the left and right motors
+ */
 void startMotors()
 {
   TCCR0B = 0b00000011;
   TCCR1B = 0b00000011;
 }
 
-// Convert percentages to PWM values
+/*
+ * @PARAM [speed] Numerical percentage of the motor speed
+ * Convert percentages to PWM values
+ */
 int pwmVal(float speed)
 {
   if(speed < 0.0)
@@ -546,11 +560,12 @@ int pwmVal(float speed)
   return (int) ((speed / 100.0) * 255.0);
 }
 
-// Move Alex forward "dist" cm at speed "speed".
-// "speed" is expressed as a percentage. E.g. 50 is
-// move forward at half speed.
-// Specifying a distance of 0 means Alex will
-// continue moving forward indefinitely.
+/*
+ * @PARAM [dist] Numerical distance in cm in which the 
+ * @PARAM [speed] Numerical percentage of the motor speed
+ * Causes the motor to move forward by a specific distance and speed.
+ * Specifying a distance of 0 means Alex will continue moving forward indefinitely.
+ */
 void forward(float dist, float speed)
 {
   if(dist > 0){
@@ -572,11 +587,12 @@ void forward(float dist, float speed)
   OCR1B = val;
 }
 
-// Reverse Alex "dist" cm at speed "speed".
-// "speed" is expressed as a percentage. E.g. 50 is
-// reverse at half speed.
-// Specifying a distance of 0 means Alex will
-// continue reversing indefinitely.
+/*
+ * @PARAM [dist] Numerical distance in cm in which the 
+ * @PARAM [speed] Numerical percentage of the motor speed
+ * Causes the motor to reverse by a specific distance and speed.
+ * Specifying a distance of 0 means Alex will continue reversing indefinitely.
+ */
 void reverse(float dist, float speed)
 {
   if(dist > 0){
@@ -597,6 +613,10 @@ void reverse(float dist, float speed)
   OCR1B = 0;
 }
 
+/*
+ * @PARAM [ang] Angle at which Alex should turn
+ * Returns the number of ticks caused by Alex's turning
+ */
 unsigned long computeDeltaTicks(float ang)
 {
   unsigned long ticks = (unsigned long)(((ang/360.0) * alexCirc)/(WHEEL_CIRC/COUNTS_PER_REV));
@@ -604,13 +624,12 @@ unsigned long computeDeltaTicks(float ang)
   return ticks;
 }
 
-
-
-// Turn Alex left "ang" degrees at speed "speed".
-// "speed" is expressed as a percentage. E.g. 50 is
-// turn left at half speed.
-// Specifying an angle of 0 degrees will cause Alex to
-// turn left indefinitely.
+/*
+ * @PARAM [ang] Angle at which Alex should turn
+ * @PARAM [speed] Numerical percentage of the motor speed
+ * Causes the motor to turn left by a specific angle and speed.
+ * Specifying a distance of 0 means Alex will continue to turn left indefinitely.
+ */
 void left(float ang, float speed)
 {
   if(ang == 0)
@@ -630,11 +649,12 @@ void left(float ang, float speed)
   OCR1B = val;
 }
 
-// Turn Alex right "ang" degrees at speed "speed".
-// "speed" is expressed as a percentage. E.g. 50 is
-// turn left at half speed.
-// Specifying an angle of 0 degrees will cause Alex to
-// turn right indefinitely.
+/*
+ * @PARAM [ang] Angle at which Alex should turn
+ * @PARAM [speed] Numerical percentage of the motor speed
+ * Causes the motor to turn left by a specific angle and speed.
+ * Specifying a distance of 0 means Alex will continue to turn right indefinitely.
+ */
 void right(float ang, float speed)
 {
   if(ang == 0)
@@ -664,11 +684,8 @@ void stop()
 }
 
 /*
- * Alex's setup and run codes
- * 
+ * To clear all counters, which includes the ticks and distance variables
  */
-
-// Clears all our counters
 void clearCounters()
 {
   leftForwardTicks=0;
@@ -683,25 +700,35 @@ void clearCounters()
   reverseDist=0; 
 }
 
+/*
+ * To clear all read buffers.
+ */
 void clearReadBuffer() {
   readBuffer.len = 0;
   readBuffer.back = 0;
   readBuffer.front = 0;
 }
 
+/*
+ * To clear all write buffers.
+ */
 void clearWriteBuffer() {
   writeBuffer.len = 0;
   writeBuffer.back = 0;
   writeBuffer.front = 0;
 }
 
-// Clears one particular counter
+/*
+ * To clear one counter.
+ */
 void clearOneCounter()
 {
   clearCounters();
 }
 
-// Intialize Alex's internal states
+/*
+ * To intialize Alex's internal states
+ */
 void initializeState()
 {
   clearCounters();
@@ -712,6 +739,10 @@ void initializeState()
   alexCirc = PI * ALEX_BREADTH;
 }
 
+/*
+ * @PARAM [*command] The packet command to be sent from Pi to Arduino
+ * Receives a packet command from Pi and updates the params with distance and speed values
+ */
 void handleCommand(TPacket *command)
 //can change initial name
 {
@@ -745,16 +776,16 @@ void handleCommand(TPacket *command)
         sendOK();
         clearOneCounter();
       break;
-    /*
-     * Implement code for other commands here.
-     * 
-     */
         
     default:
       sendBadCommand();
   }
 }
 
+/*
+ * Handshake between Pi and Arduino
+ * Run once during setup to ensure that both Pi and Arduino are connected
+ */
 void waitForHello()
 {
   int exit=0;
@@ -792,6 +823,10 @@ void waitForHello()
   } // !exit
 }
 
+/*
+ * Setup code for Arduino.
+ * Setup and start serial, motors, interrupt, LEDs, ultrasonic pins.
+ */
 void setup() {
   // put setup code here, to run once:
   cli();
@@ -808,6 +843,11 @@ void setup() {
   //waitForHello();
 }
 
+/*
+ * @PARAM [*packet] The packet to be sent from Pi to Arduino
+ * Receives a packet from Pi and splits into different cases to handle different types of packets.
+ * If the packet is of type command, handleCommand function will be called.
+ */
 void handlePacket(TPacket *packet)
 {
   switch(packet->packetType)
@@ -837,6 +877,9 @@ void loop() {
     updaterightus();
     ustime = millis();
   }
+  // If the ultrasonic sensor receives a distance of less than the threshold value,
+  // the red LEDs will light up according to the side of the ultrasonic sensor that receives the distance less than USTHRESHOLD.
+  // If Alex stops moving, the green LEDs light up instead.
   if (leftusdistance < USTHRESHOLD){
     PORTC |= (1 << PORTC3);
   } else {
@@ -852,11 +895,14 @@ void loop() {
   } else {
     PORTC |= (1 << PORTC1) | (1 << PORTC2);
   }
- // put your main code here, to run repeatedly:
+
   TPacket recvPacket; // This holds commands from the Pi
 
-  TResult result = readPacket(&recvPacket);
+  TResult result = readPacket(&recvPacket); // reads the packet received from Pi
   
+  // Handles the packet received from Pi accordingly
+  // If the packet has no error, handlePacket function will be called.
+  // If the packet has error (bad magic number or bad checksum), sendBadPacket and sendBadChecksum will be called respectively.
   if(result == PACKET_OK){
     handlePacket(&recvPacket);
   }
@@ -869,6 +915,8 @@ void loop() {
       sendBadChecksum();
     } 
 
+  // To reset the deltaDist and newDist variables whenever an 'error' occurs,
+  // which is when the current distance is greater than the newDist and deltaDist > 0.
   if(deltaDist > 0)
   {
     if(dir==FORWARD)
@@ -896,6 +944,9 @@ void loop() {
       stop();
     }
   }
+
+  // To reset the deltaTicks and targetTicks variables whenever an 'error' occurs,
+  // which is when the current number of ticks is greater than the targetTicks and deltaTicks > 0.
   if(deltaTicks > 0)
   {
     if(dir == LEFT)
