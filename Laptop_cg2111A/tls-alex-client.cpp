@@ -14,6 +14,14 @@
 // Tells us that the network is running.
 static volatile int networkActive=0;
 
+/**
+ * This function will return error messages depending
+ * on the type of error that occurs after it reads in data 
+ * received. 
+ * 
+ * @param buffer The buffer containing data that will be read in.
+ * 
+ */
 void handleError(const char *buffer)
 {
 	switch(buffer[1])
@@ -43,6 +51,15 @@ void handleError(const char *buffer)
 	}
 }
 
+/**
+ * This function would print a series of data once the Pi receives
+ * the 'get status' command. The data includes the distances
+ * Alex has moved in each direction at that point in time
+ * and the distances of obstacles on Alex's left and right 
+ * sides respectively, which is picked up by ultrasonic sensors.
+ * 
+ * @param buffer The buffer containing data that will be read in. 
+ */
 void handleStatus(const char *buffer)
 {
 	int32_t data[16];
@@ -64,18 +81,29 @@ void handleStatus(const char *buffer)
 	printf("\n---------------------------------------\n\n");
 }
 
+/**
+ * This function would receive messages from Alex and print it.
+ * 
+ * @param buffer The buffer containing data that will be read in.
+ */
 void handleMessage(const char *buffer)
 {
 	printf("MESSAGE FROM ALEX: %s\n", &buffer[1]);
 }
 
+//This function is not used.
 void handleCommand(const char *buffer)
 {
-	// We don't do anything because we issue commands
-	// but we don't get them. Put this here
-	// for future expansion
+
 }
 
+/**
+ * This function will decide which error message to send out
+ * depending on the type of packet it receives and the error encountered. 
+ * 
+ * @param buffer The buffer containing data that will be read in. 
+ * @param len Length of the buffer.
+ */
 void handleNetwork(const char *buffer, int len)
 {
 	// The first byte is the packet type
@@ -96,21 +124,35 @@ void handleNetwork(const char *buffer, int len)
 		break;
 	}
 }
-
+/**
+ * This function writes to Alex, issuing commands to it
+ * only while the network is active.
+ * 
+ * @param conn TLS connection that is being written to. 
+ * @param buffer The buffer containing data that will be read in.
+ * @param len Length of buffer.
+ */
 void sendData(void *conn, const char *buffer, int len)
 {
 	int c;
 	printf("\nSENDING %d BYTES DATA\n\n", len);
 	if(networkActive)
 	{
-		/* TODO: Insert SSL write here to write buffer to network */
+	
 		c = sslWrite(conn,buffer,sizeof(buffer));
 
-		/* END TODO */	
+			
 		networkActive = (c > 0);
 	}
 }
 
+/**
+ * This function reads data from the server while the network 
+ * connection is active.
+ * 
+ * @param conn TLS connection that is being written to.
+ * 
+ */
 void *readerThread(void *conn)
 {
 	char buffer[128];
@@ -118,11 +160,9 @@ void *readerThread(void *conn)
 
 	while(networkActive)
 	{
-		/* TODO: Insert SSL read here into buffer */
+		
 		len = sslRead(conn, buffer, sizeof(buffer));	
     	printf("read %d bytes from server.\n", len);
-		
-		/* END TODO */
 
 		networkActive = (len > 0);
 
@@ -131,12 +171,15 @@ void *readerThread(void *conn)
 	}
 
 	printf("Exiting network listener thread\n");
-    
-    /* TODO: Stop the client loop and call EXIT_THREAD */
+
     stopClient();
     EXIT_THREAD(conn);
-    /* END TODO */
 }
+
+/**
+ * Empties extra uneeded input to avoid program from hanging. 
+ * 
+ */
 
 void flushInput()
 {
@@ -145,6 +188,12 @@ void flushInput()
 	while((c = getchar()) != '\n' && c != EOF);
 }
 
+/**
+ * This function prompts Alex's controller to give parameters
+ * which instructs Alex on the distance, direction, speed.
+ * 
+ * @param params 
+ */
 void getParams(int32_t *params)
 {
 	printf("Enter distance/angle in cm/degrees (e.g. 50) and power in %% (e.g. 75) separated by space.\n");
@@ -152,6 +201,13 @@ void getParams(int32_t *params)
 	scanf("%d %d", &params[0], &params[1]);
 	flushInput();
 }
+
+/**
+ * This function allows Alex's controller to input commands after being prompted.
+ * 
+ * @param conn TLS connection that is being written to.
+ * 
+ */
 void *writerThread(void *conn)
 {
 	int quit=0;
@@ -240,19 +296,15 @@ void *writerThread(void *conn)
 			default:
 				printf("BAD COMMAND\n");
 		}
-		//usleep(COMMAND_DELAY);
 	}
 
 	printf("Exiting keyboard thread\n");
 
-    /* TODO: Stop the client loop and call EXIT_THREAD */
 	stopClient();
     EXIT_THREAD(conn);
-    /* END TODO */
 }
 
-/* TODO: #define filenames for the client private key, certificatea,
-   CA filename, etc. that you need to create a client */
+//Define filenames to create a client 
 #define SERVER_NAME "192.168.182.124"
 #define CA_CERT_FNAME "signing.pem"
 #define PORT_NUM 5000
@@ -260,12 +312,17 @@ void *writerThread(void *conn)
 #define CLIENT_KEY_FNAME "laptop.key"
 #define SERVER_NAME_ON_CERT "alex.app.com"
 
-/* END TODO */
+/**
+ * This function connects Alex to the cloud server.
+ * 
+ * @param serverName The name of the server Alexis connecting to.
+ * @param portNum Port number assigned for connection.
+ */
 void connectToServer(const char *serverName, int portNum)
 {
-    /* TODO: Create a new client */
+    
 		createClient(SERVER_NAME, PORT_NUM, 1, CA_CERT_FNAME, SERVER_NAME_ON_CERT, 1, CLIENT_CERT_FNAME, CLIENT_KEY_FNAME, readerThread, writerThread);
-    /* END TODO */
+    
 }
 
 int main(int ac, char **av)
@@ -275,15 +332,8 @@ int main(int ac, char **av)
 		fprintf(stderr, "\n\n%s <IP address> <Port Number>\n\n", av[0]);
 		exit(-1);
 	}
-
     networkActive = 1;
     connectToServer(av[1], atoi(av[2]));
-
-    /* TODO: Add in while loop to prevent main from exiting while the
-    client loop is running */
-
 	while(client_is_running());
-
-    /* END TODO */
 	printf("\nMAIN exiting\n\n");
 }
