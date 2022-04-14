@@ -37,7 +37,6 @@ unsigned long ustime = millis();
 /*
  * Alex's State Variables
  */
-
 // Serial Circular buffers
 typedef struct
 {
@@ -187,7 +186,9 @@ void sendMessage(const char *message)
 }
 
 /*
- *
+ * @PARAM [*format] Contains the array of character on the text to be sent
+ * @PARAM [...] %[flags][width][.precision][length]specifier
+ * Sends a message packet to the Pi
  */
 void dbprint(char *format, ...) {
   va_list args;
