@@ -14,6 +14,14 @@
 // Tells us that the network is running.
 static volatile int networkActive=0;
 
+/**
+ * This function will return error messages depending
+ * on the type of error that occurs after it reads in data 
+ * received. 
+ * 
+ * @param buffer The buffer containing data that will be read in.
+ * 
+ */
 void handleError(const char *buffer)
 {
 	switch(buffer[1])
@@ -43,6 +51,15 @@ void handleError(const char *buffer)
 	}
 }
 
+/**
+ * This function would print a series of data once the Pi receives
+ * the 'get status' command. The data includes the distances
+ * Alex has moved in each direction at that point in time
+ * and the distances of obstacles on Alex's left and right 
+ * sides respectively, which is picked up by ultrasonic sensors.
+ * 
+ * @param buffer The buffer containing data that will be read in. 
+ */
 void handleStatus(const char *buffer)
 {
 	int32_t data[16];
@@ -67,18 +84,29 @@ void handleStatus(const char *buffer)
 	printf("\n---------------------------------------\n\n");
 }
 
+/**
+ * This function would receive messages from Alex and print it.
+ * 
+ * @param buffer The buffer containing data that will be read in.
+ */
 void handleMessage(const char *buffer)
 {
 	printf("MESSAGE FROM ALEX: %s\n", &buffer[1]);
 }
 
+//This function is not used.
 void handleCommand(const char *buffer)
 {
-	// We don't do anything because we issue commands
-	// but we don't get them. Put this here
-	// for future expansion
+
 }
 
+/**
+ * This function will decide which error message to send out
+ * depending on the type of packet it receives and the error encountered. 
+ * 
+ * @param buffer The buffer containing data that will be read in. 
+ * @param len Length of the buffer.
+ */
 void handleNetwork(const char *buffer, int len)
 {
 	// The first byte is the packet type
@@ -99,21 +127,35 @@ void handleNetwork(const char *buffer, int len)
 		break;
 	}
 }
-
+/**
+ * This function writes to Alex, issuing commands to it
+ * only while the network is active.
+ * 
+ * @param conn TLS connection that is being written to. 
+ * @param buffer The buffer containing data that will be read in.
+ * @param len Length of buffer.
+ */
 void sendData(void *conn, const char *buffer, int len)
 {
 	int c;
 	printf("\nSENDING %d BYTES DATA\n\n", len);
 	if(networkActive)
 	{
-		/* TODO: Insert SSL write here to write buffer to network */
+	
 		c = sslWrite(conn,buffer,sizeof(buffer));
 
-		/* END TODO */	
+			
 		networkActive = (c > 0);
 	}
 }
 
+/**
+ * This function reads data from the server while the network 
+ * connection is active.
+ * 
+ * @param conn TLS connection that is being written to.
+ * 
+ */
 void *readerThread(void *conn)
 {
 	char buffer[128];
@@ -138,6 +180,11 @@ void *readerThread(void *conn)
   	EXIT_THREAD(conn); 
 }
 
+/**
+ * Empties extra uneeded input to avoid program from hanging. 
+ * 
+ */
+
 void flushInput()
 {
 	char c;
@@ -145,6 +192,12 @@ void flushInput()
 	while((c = getchar()) != '\n' && c != EOF);
 }
 
+/**
+ * This function prompts Alex's controller to give parameters
+ * which instructs Alex on the distance, direction, speed.
+ * 
+ * @param params 
+ */
 void getParams(int32_t *params)
 {
 	printf("Enter distance/angle in cm/degrees (e.g. 50) and power in %% (e.g. 75) separated by space.\n");
@@ -152,6 +205,13 @@ void getParams(int32_t *params)
 	scanf("%d %d", &params[0], &params[1]);
 	flushInput();
 }
+
+/**
+ * This function allows Alex's controller to input commands after being prompted.
+ * 
+ * @param conn TLS connection that is being written to.
+ * 
+ */
 void *writerThread(void *conn)
 {
 	int quit=0;
@@ -268,6 +328,12 @@ void *writerThread(void *conn)
 #define CLIENT_KEY_FNAME "laptop.key"
 #define SERVER_NAME_ON_CERT "alex.app.com"
 
+/**
+ * This function connects Alex to the cloud.
+ * 
+ * @param serverName The name of the server Alex is connecting to.
+ * @param portNum The port number assigned for connection.
+ */
 void connectToServer(const char *serverName, int portNum)
 {
    

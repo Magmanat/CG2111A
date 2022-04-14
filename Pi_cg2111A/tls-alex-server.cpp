@@ -6,24 +6,24 @@
 #include "serial.h"
 #include "serialize.h"
 
-/* TODO: Set PORT_NAME to the port name of your Arduino */
+//Port Name of our Arduino
 #define PORT_NAME			"/dev/ttyACM0"
-/* END TODO */
 
 #define BAUD_RATE			B9600
 
 // TLS Port Number
 #define SERVER_PORT			5000
 
-/* TODO: #define constants for the  filenames for Alex's private key, certificate, CA certificate name,
-        and the Common Name for your laptop */
+
+//Constants we defined for our filenames in order:
+//Alex's private key, Alex's certificate, CA cerficiate name, Common name for our laptop
+
 #define PORTNUM 5000
 #define KEY_FNAME   "alex.key"
 #define CERT_FNAME  "alex.crt"
 #define CA_CERT_FNAME   "signing.pem"
 #define CLIENT_NAME     "laptop.app.com"
 
-/* END TODO */
 
 // Our network buffer consists of 1 byte of packet type, and 128 bytes of data
 #define BUF_LEN				129
@@ -212,11 +212,9 @@ void sendNetworkData(const char *data, int len)
 		printf("WRITING TO CLIENT\n");
  
         if(tls_conn != NULL) {
-            /* TODO: Implement SSL write here to write data to the network. Note that
-              handleNetworkData should already have set tls_conn to point to the TLS
-              connection we want to write to. */
+			//SSLWrite function to wrtie data to the network.
+			//handleNetworkData function sets tls_conn to point to the TLS connection we want to write to
 			c = sslWrite(tls_conn, data, len);
-            /* END TODO */
 
         }
 
@@ -315,10 +313,9 @@ void *worker(void *conn)
 	
 	while(networkActive)
 	{
-		/* TODO: Implement SSL read into buffer */
+		//SSL read into buffer
 		len = sslRead(conn, buffer, sizeof(buffer));
 
-		/* END TODO */
 		// As long as we are getting data, network is active
 		networkActive=(len > 0);
 
@@ -352,12 +349,9 @@ int main()
 	setupSerial();
     networkActive = 1;
 
-    /* TODO: Call createServer with the necessary parameters to do client authentication and to send
-        Alex's certificate. Use the #define names you defined earlier  */
+	//createServer function called to do client authentication and to send Alex's certification
 	createServer(KEY_FNAME, CERT_FNAME, PORTNUM, &worker, CA_CERT_FNAME, CLIENT_NAME, 1);
-    /* TODO END */
-	// Start the uartReceiveThread. The network thread is started by
-    // createServer
+	// Start the uartReceiveThread. The network thread is started by createServer
 
 	printf("\nALEX REMOTE SUBSYSTEM\n\n");
 
