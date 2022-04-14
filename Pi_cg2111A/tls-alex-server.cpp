@@ -53,6 +53,13 @@ bool serialActive = false;
 // Prototype for sendNetworkData
 void sendNetworkData(const char *, int);
 
+/*
+This function handles an error of PACKETTYPE error,
+found in the handleUART packet function
+
+@param packet Data packet sent of type TPacket
+
+**/
 void handleErrorResponse(TPacket *packet)
 {
 	printf("UART ERROR: %d\n", packet->command);
@@ -62,6 +69,13 @@ void handleErrorResponse(TPacket *packet)
 	sendNetworkData(buffer, sizeof(buffer));
 }
 
+/*
+This function handles an error of PACKETTYPE error,
+found in the handleUARTPacket function
+
+@param packet Data packet sent of type TPacket
+
+**/
 void handleMessage(TPacket *packet)
 {
 	char data[33];
@@ -71,6 +85,13 @@ void handleMessage(TPacket *packet)
 	sendNetworkData(data, sizeof(data));
 }
 
+/*
+This function handles a response type of RESP_STATUS,
+found in the handleResponse function
+
+@param packet Data packet sent of type TPacket
+
+**/
 void handleStatus(TPacket *packet)
 {
 	char data[65];
@@ -80,6 +101,13 @@ void handleStatus(TPacket *packet)
 	sendNetworkData(data, sizeof(data));
 }
 
+/*
+This function handles a type of PACKET_TYPE_RESPONSE,
+found in the handleUARTPacket function
+
+@param packet Data packet sent of type TPacket
+
+**/
 void handleResponse(TPacket *packet)
 {
 	// The response code is stored in command
@@ -102,7 +130,13 @@ void handleResponse(TPacket *packet)
 	}
 }
 
+/*
+This function handles an incoming data packet sent over serial communication.
+Different packetTypes are handled via different functions called with it
 
+@param packet Data packet sent of type TPacket
+
+**/
 void handleUARTPacket(TPacket *packet)
 {
 	switch(packet->packetType)
@@ -125,7 +159,13 @@ void handleUARTPacket(TPacket *packet)
 	}
 }
 
+/*
+This function sends outgoing data packet over serial communications
+It first serializes the data, converting it to a stream of bytes
 
+@param packet Data packet sent of type TPacket
+
+**/
 void uartSendPacket(TPacket *packet)
 {
 	char buffer[PACKET_SIZE];
@@ -134,6 +174,11 @@ void uartSendPacket(TPacket *packet)
 	serialWrite(buffer, len);
 }
 
+/*
+This function handles error when receiving data in the uartReceiveThread
+
+@param error The type of error present of type TResult
+**/
 void handleError(TResult error)
 {
 	switch(error)
@@ -151,6 +196,10 @@ void handleError(TResult error)
 	}
 }
 
+/*
+This function receives data sent over serial communications
+It waits for the all the bytes to be completely sent over before handling the packet
+**/
 void *uartReceiveThread(void *p)
 {
 	char buffer[PACKET_SIZE];
@@ -189,6 +238,11 @@ void *uartReceiveThread(void *p)
 
 	*/
 
+/*
+This functions sets up the serial communication
+Inside the start serial function, we provide the details of the 
+port name, baud rate, data bits, parity bits, stop bits
+**/
 void setupSerial() {
 	printf("Opening Serial Port\n");
 	// Open the serial port
@@ -201,6 +255,12 @@ void setupSerial() {
 	pthread_create(&serThread, NULL, uartReceiveThread, NULL);
 }
 
+/*
+This function sends the data over the TLS connection if our network is active
+
+@param data Pointer to the beginning of the data bytes, passed into SSLWrite function
+@param len The length of our data sent
+**/
 void sendNetworkData(const char *data, int len)
 {
 	// Send only if network is active
@@ -223,6 +283,12 @@ void sendNetworkData(const char *data, int len)
 	}
 }
 
+/*
+This functions handles the incoming commands of different types
+
+@param conn The TLS connection we set up
+@param buffer The buffer used to store the command & paramters
+**/
 void handleCommand(void *conn, const char *buffer)
 {
 	// The first byte contains the command
@@ -290,6 +356,13 @@ void handleCommand(void *conn, const char *buffer)
 	}
 }
 
+/*
+This function is called when we receive response back from the Arduino
+We check if a command type packet is sent before handling the command
+
+@param conn The TLS connection we will write to
+@param buffer The buffer from SSLread. buffer[0] is of type TNetconstant.
+**/
 void handleNetworkData(void *conn, const char *buffer, int len)
 {
     /* Note: A problem with our design is that we actually get data to be written
@@ -305,6 +378,12 @@ void handleNetworkData(void *conn, const char *buffer, int len)
 		handleCommand(conn, buffer);
 }
 
+/*
+This function runs continously while we are reading in data from the serial communication
+It stores received data into the buffer by calling another function handleNetworkData
+
+@param conn The TLS connection we set up
+**/
 void *worker(void *conn)
 {
 	int len;
@@ -333,7 +412,9 @@ void *worker(void *conn)
     EXIT_THREAD(conn);
 }
 
-
+/*
+This function sends a hello packet as a "handshake" during initialization
+**/
 void sendHello()
 {
 	// Send a hello packet
