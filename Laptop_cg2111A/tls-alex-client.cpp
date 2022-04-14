@@ -76,6 +76,9 @@ void handleStatus(const char *buffer)
 	printf("Right Reverse Ticks Turns:\t%d\n", data[7]);
 	printf("Forward Distance:\t\t%d\n", data[8]);
 	printf("Reverse Distance:\t\t%d\n", data[9]);
+	
+	// Added these two stats, to be able to check if Alex was close to either the left or the right walls.
+	// The distance would be printed in centimeters
 	printf("Left Ultrasound Distance:\t%d\n", data[10]);
 	printf("Right Ultrasound Distance:\t%d\n", data[11]);
 	printf("\n---------------------------------------\n\n");
@@ -160,20 +163,21 @@ void *readerThread(void *conn)
 
 	while(networkActive)
 	{
-		
 		len = sslRead(conn, buffer, sizeof(buffer));	
-    	printf("read %d bytes from server.\n", len);
+		printf("read %d bytes from server.\n", len);	
 
 		networkActive = (len > 0);
 
-		if(networkActive)
+		if(networkActive){
 			handleNetwork(buffer, len);
+		}
 	}
 
 	printf("Exiting network listener thread\n");
-
-    stopClient();
-    EXIT_THREAD(conn);
+    
+   
+  	stopClient();
+  	EXIT_THREAD(conn); 
 }
 
 /**
@@ -215,8 +219,13 @@ void *writerThread(void *conn)
 	while(!quit)
 	{
 		char ch;
-		usleep(COMMAND_DELAY);
+		
+		// Delay is added, as sometimes when commands are sent too fast, the commands get buffered and
+		// Alex no longer behaves as intended, requiring us to restart the Alex-server and Alex-client
+		usleep(COMMAND_DELAY); 
+		
 		printf("Command (f=forward, b=reverse, l=turn left, r=turn right, s=stop, c=clear stats, g=get stats q=exit)\n");
+		// added quick commands, W, A, X, D to be able to traverse the maze quickly without inputting distance/degrees + speed
 		printf("For fast movement, command (w=forward, x=reverse, a=turn left, d=turn right)\n");
 		scanf("%c", &ch);
 
@@ -260,6 +269,8 @@ void *writerThread(void *conn)
 			case 'Q':
 				quit=1;
 				break;
+				
+			// w/W will move forward 5cm at 70 power
 			case 'w':
 			case 'W':
 				params[0] = 5;
@@ -268,6 +279,7 @@ void *writerThread(void *conn)
 				buffer[1] = 'f';
 				sendData(conn, buffer, sizeof(buffer));
 				break;
+			// x/X will move backward 5cm at 70 power
 			case 'x':
 			case 'X':
 				params[0] = 5;
@@ -276,6 +288,7 @@ void *writerThread(void *conn)
 				buffer[1] = 'b';
 				sendData(conn, buffer, sizeof(buffer));
 				break;
+			// a/A will move leftward 20 degrees at 65 power (calibrated such that will not affect hector mapping)
 			case 'a':
 			case 'A':
 				params[0] = 20;
@@ -284,6 +297,7 @@ void *writerThread(void *conn)
 				buffer[1] = 'l';
 				sendData(conn, buffer, sizeof(buffer));
 				break;
+			// d/D will move rightward 20 degrees at 65 power (calibrated such that will not affect hector mapping)
 			case 'd':
 			case 'D':
 				params[0] = 20;
@@ -301,10 +315,12 @@ void *writerThread(void *conn)
 	printf("Exiting keyboard thread\n");
 
 	stopClient();
-    EXIT_THREAD(conn);
+	EXIT_THREAD(conn);
+    
 }
 
-//Define filenames to create a client 
+
+
 #define SERVER_NAME "192.168.182.124"
 #define CA_CERT_FNAME "signing.pem"
 #define PORT_NUM 5000
@@ -313,16 +329,16 @@ void *writerThread(void *conn)
 #define SERVER_NAME_ON_CERT "alex.app.com"
 
 /**
- * This function connects Alex to the cloud server.
+ * This function connects Alex to the cloud.
  * 
- * @param serverName The name of the server Alexis connecting to.
- * @param portNum Port number assigned for connection.
+ * @param serverName The name of the server Alex is connecting to.
+ * @param portNum The port number assigned for connection.
  */
 void connectToServer(const char *serverName, int portNum)
 {
-    
-		createClient(SERVER_NAME, PORT_NUM, 1, CA_CERT_FNAME, SERVER_NAME_ON_CERT, 1, CLIENT_CERT_FNAME, CLIENT_KEY_FNAME, readerThread, writerThread);
-    
+   
+	createClient(SERVER_NAME, PORT_NUM, 1, CA_CERT_FNAME, SERVER_NAME_ON_CERT, 1, CLIENT_CERT_FNAME, CLIENT_KEY_FNAME, readerThread, writerThread);
+   
 }
 
 int main(int ac, char **av)
@@ -332,8 +348,10 @@ int main(int ac, char **av)
 		fprintf(stderr, "\n\n%s <IP address> <Port Number>\n\n", av[0]);
 		exit(-1);
 	}
-    networkActive = 1;
-    connectToServer(av[1], atoi(av[2]));
+
+	networkActive = 1;
+	connectToServer(av[1], atoi(av[2]));
+
 	while(client_is_running());
 	printf("\nMAIN exiting\n\n");
 }
