@@ -148,7 +148,7 @@ void updaterightus(){
  * To send a packet containing key information regarding Alex's motors' ticks,
  * forward/reverse distance and nearest obstacle distance.
  * Params array is used to store this information,
- * and se the packetType and command files accordingly.
+ * and set the packetType and command files accordingly.
  * sendResponse function is used to send the packet out.
  */
 void sendStatus()
@@ -381,7 +381,7 @@ ISR(INT1_vect)
 
 
 /*
- * Setup code for serial communications
+ * Setup code for serial communications in bare metal
  */
 void setupSerial()
 {
@@ -395,7 +395,7 @@ void setupSerial()
 }
 
 /*
- * Start code for serial communications
+ * Start code for serial communications in bare metal
  */
 void startSerial()
 {
@@ -406,6 +406,7 @@ void startSerial()
  * @PARAM [*circBuffer] Circular buffer that stores and transfers data
  * @PARAM [data] A character in the data
  * Push char data to the circular buffer.
+ * Returns BUFFER_FULL if the buffer is full and BUFFER_OK if buffer still has space
  */
 TBufferStatus pushToBuffer(TCircBuffer *circBuffer, char data) {
   if (circBuffer->len >= circBuffer->max_size) return BUFFER_FULL; // If buffer is full, fail silently and lose data
@@ -421,6 +422,7 @@ TBufferStatus pushToBuffer(TCircBuffer *circBuffer, char data) {
  * @PARAM [*circBuffer] Circular buffer that stores and transfers data
  * @PARAM [data] A character in the data
  * Once data is read, pop data off the circular buffer so that next data can be read in
+ * Returns BUFFER_EMPTY when the buffer is empty and BUFFER_OK if the buffer still has data
  */
 TBufferStatus popFromBuffer(TCircBuffer *circBuffer, char *data) {
     if (circBuffer->len <= 0) return BUFFER_EMPTY;
@@ -443,8 +445,9 @@ ISR(USART_RX_vect) {
 
 /*
  * @PARAM [*buffer] An array that stores the data
- * Reads the buffer from the serial port when buffer size exceeds the size of TPacket. 
- * Returns the read character in ch if available. Also returns TRUE if ch is valid. ??
+ * Starts reading the buffer from the serial port when circular buffer size exceeds the size of TPacket. 
+ * Keeps reading from circular buffer until BUFFER_EMPTY
+ * Returns the count of how many bytes were read from the Serial port
  */
 int readSerial(char *buffer)
 {
@@ -472,6 +475,8 @@ int readSerial(char *buffer)
 
 /*
  * Interrupt that is called when a data is transmitted using serial communication
+ * If BUFFER_OK, write data to Serial port.
+ * If BUFFER_EMPTY, disable the UDRE interrupt as there is no more data to send.
  */
 ISR(USART_UDRE_vect) {
   char data;
@@ -490,7 +495,9 @@ ISR(USART_UDRE_vect) {
 /*
  * @PARAM [*buffer] An array that stores the data
  * @PARAM [len] Total length of buffer
- * Writes to the serial port implemented in baremetal
+ * fills up the writeBuffer with the data we want to send,
+ * then writes to UDR0 with the first data to get the ball rolling and
+ * turns on the UDRE interrupt to start the continuous sending of data.
  */
 void writeSerial(const char *buffer, int len) {
   // Serial.write(buffer,len);
@@ -741,8 +748,9 @@ void initializeState()
 }
 
 /*
- * @PARAM [*command] The packet command to be sent from Pi to Arduino
- * Receives a packet command from Pi and updates the params with distance and speed values
+ * @PARAM [*command] The packet command that was sent from Pi to Arduino
+ * Receives a packet command from Pi and executes the command depending on
+ * what command type it is.
  */
 void handleCommand(TPacket *command)
 //can change initial name
@@ -841,11 +849,11 @@ void setup() {
   setupUltrasound();
   initializeState();
   sei();
-  //waitForHello();
+  waitForHello();
 }
 
 /*
- * @PARAM [*packet] The packet to be sent from Pi to Arduino
+ * @PARAM [*packet] The packet that was sent from Pi to Arduino
  * Receives a packet from Pi and splits into different cases to handle different types of packets.
  * If the packet is of type command, handleCommand function will be called.
  */
@@ -872,7 +880,7 @@ void handlePacket(TPacket *packet)
 }
 
 void loop() {
-
+  // when time to update ultrasound, it will be updated
   if (millis() - ustime >= USDELAY){
     updateleftus();
     updaterightus();
@@ -880,7 +888,7 @@ void loop() {
   }
   // If the ultrasonic sensor receives a distance of less than the threshold value,
   // the red LEDs will light up according to the side of the ultrasonic sensor that receives the distance less than USTHRESHOLD.
-  // If Alex stops moving, the green LEDs light up instead.
+  // If Alex starts moving, the green LEDs would light up.
   if (leftusdistance < USTHRESHOLD){
     PORTC |= (1 << PORTC3);
   } else {
