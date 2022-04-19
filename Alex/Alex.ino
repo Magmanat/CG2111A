@@ -120,7 +120,6 @@ void delaymicros(int delaytime){
  */
 void updateleftus(){
   PORTD &= ~(1 << 7);
-  long long timenow = micros();
   delaymicros(2);
   PORTD |= (1 << 7);
   delaymicros(10);
