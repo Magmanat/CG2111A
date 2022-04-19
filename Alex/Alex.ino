@@ -40,9 +40,9 @@ unsigned long ustime = millis();
 // Serial Circular buffers
 typedef struct
 {
-	int len;
-	int front;
-	int back;
+  int len;
+  int front;
+  int back;
   int max_size;
   char buffer[WRITE_BUFFER_SIZE];
 } TCircBuffer;
