@@ -438,9 +438,9 @@ int main()
 
 	
 
-	//printf("DONE. Sending HELLO to Arduino\n");
-	//sendHello();
-	//printf("DONE.\n");
+	printf("DONE. Sending HELLO to Arduino\n");
+	sendHello();
+	printf("DONE.\n");
 
 
     // Loop while the server is active
